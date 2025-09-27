@@ -1,0 +1,2 @@
+BOT_API_KEY = "7968674829:AAFbpr8_LJW_UGkwEdiLRZ99KsI4Vn4b14s"
+REPORTS_DB_PATH = "instance/reports.db"  
