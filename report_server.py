@@ -16,12 +16,24 @@ class Report(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.datetime.now(datetime.timezone.utc))
 
 
+def check_is_duplication(name, content) -> bool:
+    existing_report = Report.query.filter_by(name=name, content=content).first()
+    if existing_report:
+        if existing_report.content == content:
+            return True
+        else:
+            return False
+    return False
+
 @app.route("/api/reports/upload", methods=["POST"])
 def upload_report():
     data = request.get_json()
     if not data or "name" not in data or "content" not in data:
         return jsonify({"error": "Invalid payload"}), 400
 
+    if check_is_duplication(data["name"], data["content"]):
+        return jsonify({"message": "Duplicate report"}), 409
+    
     report = Report(name=data["name"], content=data["content"])
     db.session.add(report)
     db.session.commit()
