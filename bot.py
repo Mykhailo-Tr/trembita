@@ -327,7 +327,7 @@ async def view_report(cb: CallbackQuery, callback_data: ReportCallback):
         else:
             cell.set_facecolor("white")
 
-    plt.title(f"📊 {name}\n🗓 {created_at[:10]}", fontsize=14, weight="bold")
+    plt.title(f"{name}\n Створенно: {created_at[:10]}", fontsize=14, weight="bold")
     img_buf = io.BytesIO()
     plt.savefig(img_buf, format="PNG", bbox_inches="tight", dpi=200)
     plt.close(fig)
@@ -350,19 +350,17 @@ async def view_report(cb: CallbackQuery, callback_data: ReportCallback):
 
     if len(numeric_cols) > 0:
         fig, ax = plt.subplots(figsize=(10, 4))
-
         # для X замість індекса беремо "№ + Назва"
-        if "Назва" in df.columns:
-            x_labels = [f"{row['№']}. {row['Назва']}" for _, row in df.iterrows()]
-        else:
-            x_labels = df["№"].astype(str).tolist()
 
+        x_labels = df[df.columns.to_list()[1]].astype(str).tolist()
+        x_labels = [f"{i+1}. {label}" for i, label in enumerate(x_labels)]
+        
         df[numeric_cols].plot(kind="bar", ax=ax)
 
         ax.set_xticks(range(len(x_labels)))
         ax.set_xticklabels(x_labels, rotation=45, ha="right")
 
-        plt.title("📊 Графік по числових даних", fontsize=12, weight="bold")
+        plt.title("Графік по числових даних", fontsize=12, weight="bold")
         plt.tight_layout()
         chart_buf = io.BytesIO()
         plt.savefig(chart_buf, format="PNG", dpi=200)
