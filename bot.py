@@ -38,6 +38,10 @@ class ReportCallback(CallbackData, prefix="report"):
 # --- FSM states ---
 class MonthForm(StatesGroup):
     waiting_for_month = State()
+    
+class DateForm(StatesGroup):
+    waiting_for_date = State()
+
 
 
 # --- DB utils ---
@@ -165,6 +169,49 @@ async def choose_date(cb: CallbackQuery):
         "📆 <b>Оберіть дату:</b>", reply_markup=kb.as_markup()
     )
 
+
+@dp.callback_query(ReportCallback.filter(F.action == "enter_date"))
+async def enter_date_cb(cb: CallbackQuery, state: FSMContext):
+    await cb.answer()
+    await cb.message.edit_text(
+        "🔍 Введіть дату у форматі <code>YYYY-MM-DD</code> (наприклад <code>2025-09-29</code>).\n"
+        "Або відправте /cancel для відміни."
+    )
+    await state.set_state(DateForm.waiting_for_date)
+    
+@dp.message(DateForm.waiting_for_date)
+async def process_date_input(message: Message, state: FSMContext):
+    text = (message.text or "").strip()
+
+    if text.lower() in ("/cancel", "cancel"):
+        await state.clear()
+        await message.answer("❌ Дію скасовано.")
+        await cmd_start(message)
+        return
+
+    try:
+        dt = datetime.strptime(text, "%Y-%m-%d").date()
+    except ValueError:
+        await message.answer("⚠️ Невірний формат! Використовуйте <b>YYYY-MM-DD</b>, наприклад 2025-09-29.")
+        return
+
+    reports = get_reports_by_date(dt)
+    await state.clear()
+
+    if not reports:
+        await message.answer(f"❌ <b>Звітів за {dt} немає.</b>")
+        return
+
+    kb = InlineKeyboardBuilder()
+    for r_id, name, content, created_at in reports:
+        kb.button(
+            text=f"📄 {name} | 📆 {created_at[:10]}",
+            callback_data=ReportCallback(action="view_report", report_id=r_id).pack(),
+        )
+    kb.button(text="🔙 Назад", callback_data=ReportCallback(action="choose_date").pack())
+    kb.adjust(1)
+
+    await message.answer(f"📊 <b>Звіти за {dt}:</b>", reply_markup=kb.as_markup())
 
 # Перегляд звітів за датою
 @dp.callback_query(ReportCallback.filter(F.action == "view_by_date"))
