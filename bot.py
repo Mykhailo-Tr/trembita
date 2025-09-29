@@ -224,6 +224,40 @@ async def choose_month(cb: CallbackQuery):
     )
 
 
+@dp.callback_query(ReportCallback.filter(F.action == "view_by_month"))
+async def view_by_month(cb: CallbackQuery, callback_data: ReportCallback):
+    await cb.answer()
+    try:
+        year_part, month_part = callback_data.date_str.split("-")
+        year = int(year_part)
+        month = int(month_part)
+        if not (1 <= month <= 12):
+            raise ValueError("Невірний місяць")
+    except Exception:
+        await cb.message.edit_text("⚠️ <b>Невірний формат місяця.</b>")
+        return
+
+    reports = get_reports_by_month(year, month)
+    if not reports:
+        await cb.message.edit_text(f"❌ <b>Звітів за {year}-{month:02d} немає.</b>")
+        return
+
+    kb = InlineKeyboardBuilder()
+    for r_id, name, content, created_at in reports:
+        kb.button(
+            text=f"📄 {name} | 📆 {created_at[:10]}",
+            callback_data=ReportCallback(action="view_report", report_id=r_id).pack(),
+        )
+
+    kb.button(text="🔙 Назад", callback_data=ReportCallback(action="choose_month").pack())
+    kb.adjust(1)
+
+    await cb.message.edit_text(
+        f"📊 <b>Звіти за {year}-{month:02d}:</b>",
+        reply_markup=kb.as_markup(),
+    )
+
+
 # Обробник: користувач обирає "ввести місяць вручну" — переключаємось в FSM
 @dp.callback_query(ReportCallback.filter(F.action == "enter_month"))
 async def enter_month_cb(cb: CallbackQuery, state: FSMContext):
@@ -379,7 +413,6 @@ async def view_report(cb: CallbackQuery, callback_data: ReportCallback):
         if not totals_df.empty:
             fig, ax = plt.subplots(figsize=(8, 4))
             totals_df = totals_df.reset_index(drop=True).get("Тара (kg)")
-            print(totals_df)
 
             # перетворюємо у словник, де ключі - назви показників
             summary_data = {
