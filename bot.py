@@ -345,30 +345,76 @@ async def view_report(cb: CallbackQuery, callback_data: ReportCallback):
     csv_file = BufferedInputFile(csv_buf.read(), filename=f"{name}.csv")
     await cb.message.answer_document(document=csv_file)
 
-    # простий графік, якщо є числові дані
+    # --- НОВА ЧАСТИНА: розділення на основні та підсумкові ---
     numeric_cols = df.select_dtypes(include="number").columns
 
     if len(numeric_cols) > 0:
-        fig, ax = plt.subplots(figsize=(10, 4))
-        # для X замість індекса беремо "№ + Назва"
+        # Основні рядки (без nan у числових колонках)
+        main_df = df.dropna(subset=numeric_cols, how="any")
+        # Підсумкові рядки (там де nan у числових колонках)
+        totals_df = df[df[numeric_cols].isna().any(axis=1)]
 
-        x_labels = df[df.columns.to_list()[1]].astype(str).tolist()
-        x_labels = [f"{i+1}. {label}" for i, label in enumerate(x_labels)]
-        
-        df[numeric_cols].plot(kind="bar", ax=ax)
+        # --- Основний графік ---
+        if not main_df.empty:
+            fig, ax = plt.subplots(figsize=(10, 4))
+            x_labels = main_df[main_df.columns.to_list()[1]].astype(str).tolist()
+            x_labels = [f"{i+1}. {label}" for i, label in enumerate(x_labels)]
 
-        ax.set_xticks(range(len(x_labels)))
-        ax.set_xticklabels(x_labels, rotation=45, ha="right")
+            main_df[numeric_cols].plot(kind="bar", ax=ax)
 
-        plt.title("Графік по числових даних", fontsize=12, weight="bold")
-        plt.tight_layout()
-        chart_buf = io.BytesIO()
-        plt.savefig(chart_buf, format="PNG", dpi=200)
-        plt.close(fig)
-        chart_buf.seek(0)
+            ax.set_xticks(range(len(x_labels)))
+            ax.set_xticklabels(x_labels, rotation=45, ha="right")
 
-        chart = BufferedInputFile(chart_buf.read(), filename=f"{name}_chart.png")
-        await cb.message.answer_photo(photo=chart)
+            plt.title("Основний графік по числових даних", fontsize=12, weight="bold")
+            plt.tight_layout()
+            chart_buf = io.BytesIO()
+            plt.savefig(chart_buf, format="PNG", dpi=200)
+            plt.close(fig)
+            chart_buf.seek(0)
+
+            chart = BufferedInputFile(chart_buf.read(), filename=f"{name}_main_chart.png")
+            await cb.message.answer_photo(photo=chart)
+
+        # --- Окремий графік для підсумків ---
+        if not totals_df.empty:
+            fig, ax = plt.subplots(figsize=(8, 4))
+            totals_df = totals_df.reset_index(drop=True).get("Тара (kg)")
+            print(totals_df)
+
+            # перетворюємо у словник, де ключі - назви показників
+            summary_data = {
+                "Брутто завезено": totals_df[0],
+                "Брутто вивезено": totals_df[1],
+                "Нетто завезено": totals_df[2],
+                "Нетто вивезено": totals_df[3],
+                "Загальний залишок": totals_df[4],
+            }
+
+            labels = list(summary_data.keys())
+            values = list(summary_data.values())
+
+            bars = ax.bar(labels, values, color=["#4CAF50", "#F44336", "#2196F3", "#FF9800", "#9C27B0"])
+
+            # підписуємо значення над стовпчиками
+            for bar in bars:
+                height = bar.get_height()
+                ax.text(bar.get_x() + bar.get_width()/2, height,
+                        f"{height:,.0f} кг",
+                        ha="center", va="bottom", fontsize=9, weight="bold")
+
+            ax.set_ylabel("Кількість (кг)")
+            ax.set_title("Підсумкові значення", fontsize=12, weight="bold")
+
+            plt.tight_layout()
+            totals_buf = io.BytesIO()
+            plt.savefig(totals_buf, format="PNG", dpi=200)
+            plt.close(fig)
+            totals_buf.seek(0)
+
+            totals_chart = BufferedInputFile(
+                totals_buf.read(), filename=f"{name}_totals_chart.png"
+            )
+            await cb.message.answer_photo(photo=totals_chart)
 
     # меню
     kb = InlineKeyboardBuilder()
@@ -381,7 +427,6 @@ async def view_report(cb: CallbackQuery, callback_data: ReportCallback):
     await cb.message.answer(
         "⬆️ <b>Оберіть наступну дію:</b>", reply_markup=kb.as_markup()
     )
-
 
 # Повернення в меню
 @dp.callback_query(ReportCallback.filter(F.action == "menu"))
